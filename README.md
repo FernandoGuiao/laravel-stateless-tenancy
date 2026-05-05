@@ -166,6 +166,76 @@ $user = AuthService::token()->getUser(); // Array com ID e nome
 $hasPerm = AuthService::token()->hasPermission('create-invoices'); // true / false
 ```
 
+### Notificações Stateless (Recuperação de Senha e Verificação de E-mail)
+
+O pacote provê funcionalidades nativas para emitir e validar **Action Tokens** (JWTs "magros" projetados para uma única ação, sem as permissões normais do usuário).
+
+**1. Preparando o Model:**
+Adicione a Trait `SendsStatelessNotifications` ao seu Model `User`:
+
+```php
+namespace App\Models;
+
+use FernandoGuiao\StatelessTenancy\Traits\HasAccounts;
+use FernandoGuiao\StatelessTenancy\Traits\SendsStatelessNotifications;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+
+class User extends Authenticatable
+{
+    use HasAccounts, SendsStatelessNotifications, Notifiable;
+    // ...
+}
+```
+
+**2. Solicitando a Recuperação de Senha (Controller):**
+```php
+use App\Models\User;
+use Illuminate\Http\Request;
+
+class ForgotPasswordController extends Controller
+{
+    public function sendResetLink(Request $request)
+    {
+        $user = User::where('email', $request->email)->firstOrFail();
+
+        // Pass the base frontend URL. The package will append `?token=YOUR_JWT`
+        $user->sendStatelessPasswordResetNotification('https://seu-frontend.com/reset-password');
+
+        return response()->json(['message' => 'Reset link sent!']);
+    }
+}
+```
+
+**3. Validando o Action Token e Redefinindo a Senha (Controller):**
+Quando o usuário clicar no link do e-mail, seu front-end deve capturar o `token` da URL e enviá-lo para sua API:
+
+```php
+use FernandoGuiao\StatelessTenancy\Services\AuthService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+
+class ResetPasswordController extends Controller
+{
+    public function reset(Request $request, AuthService $authService)
+    {
+        // validateActionToken retorna null se o token for inválido, expirado,
+        // ou se a ação ('password_reset') não bater.
+        $user = $authService->validateActionToken($request->token, 'password_reset');
+
+        if (!$user) {
+            return response()->json(['error' => 'Link inválido ou expirado.'], 400);
+        }
+
+        $user->password = Hash::make($request->password);
+        $user->save();
+
+        return response()->json(['message' => 'Senha alterada com sucesso!']);
+    }
+}
+```
+*(Você pode seguir a exata mesma lógica para `sendStatelessEmailVerificationNotification` passando a ação `'email_verification'` na validação).*
+
 ## Tratamento de Erros
 
 O middleware lança Exceções que formatam automaticamente o retorno JSON com status `401`.

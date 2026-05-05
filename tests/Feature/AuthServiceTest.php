@@ -54,4 +54,32 @@ class AuthServiceTest extends TestCase
         $this->expectException(UnauthorizedException::class);
         $authService->attempt(['email' => 'john@test.com', 'password' => 'wrong_password'], $account->id);
     }
+
+    public function test_it_can_issue_and_validate_action_tokens()
+    {
+        $user = User::create(['name' => 'Action User', 'email' => 'action@test.com', 'password' => Hash::make('password')]);
+
+        $authService = new AuthService();
+        $token = $authService->issueActionToken($user, 'password_reset', 15);
+
+        $this->assertIsString($token);
+
+        // Validating the token with the correct action
+        $resolvedUser = $authService->validateActionToken($token, 'password_reset');
+        $this->assertNotNull($resolvedUser);
+        $this->assertEquals($user->id, $resolvedUser->id);
+
+        // Validating the token with the wrong action
+        $resolvedUserWrongAction = $authService->validateActionToken($token, 'email_verification');
+        $this->assertNull($resolvedUserWrongAction);
+    }
+
+    public function test_it_returns_null_for_invalid_action_tokens()
+    {
+        $authService = new AuthService();
+        $invalidToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.invalid.signature';
+
+        $resolvedUser = $authService->validateActionToken($invalidToken, 'password_reset');
+        $this->assertNull($resolvedUser);
+    }
 }

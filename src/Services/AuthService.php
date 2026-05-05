@@ -102,6 +102,74 @@ class AuthService
     }
 
     /**
+     * Issues an action token (e.g., for password reset or email verification).
+     */
+    public function issueActionToken(Authenticatable $user, string $action, int $expirationMinutes = 15): string
+    {
+        $tokenBuilder = (new Builder(new JoseEncoder(), ChainedFormatter::default()));
+        $algorithm    = new Sha256();
+        $signingKey   = InMemory::plainText($this->key);
+
+        $now   = new DateTimeImmutable();
+
+        $token = $tokenBuilder
+            ->issuedBy(config('app.name', 'Laravel'))
+            ->issuedAt($now)
+            ->canOnlyBeUsedAfter($now)
+            ->expiresAt($now->modify('+'. $expirationMinutes .' minutes'))
+            ->relatedTo((string) $user->id)
+            ->withClaim('action', $action)
+            ->getToken($algorithm, $signingKey);
+
+        return $token->toString();
+    }
+
+    /**
+     * Validates an action token and returns the corresponding user model if valid.
+     */
+    public function validateActionToken(string $token, string $expectedAction): ?Authenticatable
+    {
+        $parser = new Parser(new JoseEncoder());
+
+        try {
+            $parsedToken = $parser->parse($token);
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        $signer = new Sha256();
+        $publicKey = InMemory::plainText($this->key);
+
+        $validator = new Validator();
+        $constraints = [
+            new SignedWith($signer, $publicKey),
+            new StrictValidAt(SystemClock::fromUTC())
+        ];
+
+        try {
+            $validator->assert($parsedToken, ...$constraints);
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        if ($parsedToken->claims()->get('action') !== $expectedAction) {
+            return null;
+        }
+
+        $userId = $parsedToken->claims()->get('sub');
+        if (!$userId) {
+            return null;
+        }
+
+        $userModelClass = config('stateless-tenancy.user_model');
+        if (!$userModelClass || !class_exists($userModelClass)) {
+            return null;
+        }
+
+        return $userModelClass::find($userId);
+    }
+
+    /**
      * @throws UnauthorizedException
      */
     public function issueToken(Authenticatable $user, $isRefresh = false, $accountUniqueId = null): string
