@@ -1,0 +1,42 @@
+{
+    "name": "fernandoguiao/laravel-stateless-tenancy",
+    "description": "Laravel package for stateless multi-tenancy auth using JWT",
+    "type": "library",
+    "require": {
+        "php": "^8.1",
+        "illuminate/support": "^10.0|^11.0",
+        "lcobucci/jwt": "^5.0",
+        "lcobucci/clock": "^3.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0|^11.0",
+        "orchestra/testbench": "^8.0|^9.0"
+    },
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Fernando Guiao",
+            "email": "contato@fernandoguiao.com"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "FernandoGuiao\\StatelessTenancy\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "FernandoGuiao\\StatelessTenancy\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "FernandoGuiao\\StatelessTenancy\\StatelessTenancyServiceProvider"
+            ],
+            "aliases": {
+                "AuthService": "FernandoGuiao\\StatelessTenancy\\Services\\AuthService"
+            }
+        }
+    }
+}
