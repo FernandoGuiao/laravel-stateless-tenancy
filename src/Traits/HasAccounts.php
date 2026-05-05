@@ -12,6 +12,11 @@ use Illuminate\Support\Str;
 
 trait HasAccounts
 {
+    /**
+     * Get the user's accounts.
+     *
+     * @return BelongsToMany
+     */
     public function accounts() : BelongsToMany
     {
         return $this->belongsToMany(
@@ -22,7 +27,13 @@ trait HasAccounts
         );
     }
 
-    public function accountRoles($accountId = null) : BelongsToMany
+    /**
+     * Get the user's roles for a specific account.
+     *
+     * @param int|string|Model|null $accountId The account ID or Model. Defaults to current tenancy context.
+     * @return BelongsToMany
+     */
+    public function accountRoles(int|string|Model|null $accountId = null) : BelongsToMany
     {
         $accountId = $this->extractAccountId($accountId ?? AuthService::accountId());
         return $this->belongsToMany(
@@ -33,7 +44,13 @@ trait HasAccounts
         )->wherePivot(config('stateless-tenancy.account_foreign_key', 'account_id'), $accountId);
     }
 
-    public function getAccountPermissions($account) : array
+    /**
+     * Get an array of permissions the user has for a given account.
+     *
+     * @param int|string|Model $account The account ID or Model.
+     * @return array<string, bool> An associative array where keys are permission names and values are true.
+     */
+    public function getAccountPermissions(int|string|Model $account) : array
     {
         $accountId = $this->extractAccountId($account);
         $permissions = [];
@@ -49,7 +66,14 @@ trait HasAccounts
         return $permissions;
     }
 
-    public function attachAccountWithRoles($account, $roles) : void
+    /**
+     * Attach an account to the user with the specified roles.
+     *
+     * @param int|string|Model $account The account ID or Model.
+     * @param int|string|Model|array|Collection $roles A single role ID/Model or an array/Collection of them.
+     * @return void
+     */
+    public function attachAccountWithRoles(int|string|Model $account, int|string|Model|array|Collection $roles) : void
     {
         $accountId = $this->extractAccountId($account);
         $roleIds = $this->extractRoleIds($roles);
@@ -59,18 +83,38 @@ trait HasAccounts
         }
     }
 
-    public function removeAllRolesFromAccount($account) : void
+    /**
+     * Remove all roles associated with a given account for this user.
+     *
+     * @param int|string|Model $account The account ID or Model.
+     * @return void
+     */
+    public function removeAllRolesFromAccount(int|string|Model $account) : void
     {
         $accountId = $this->extractAccountId($account);
         $this->accounts()->detach($accountId);
     }
 
-    public function detachAccount($account) : void
+    /**
+     * Detach the account from the user entirely.
+     * This acts as an alias for removeAllRolesFromAccount.
+     *
+     * @param int|string|Model $account The account ID or Model.
+     * @return void
+     */
+    public function detachAccount(int|string|Model $account) : void
     {
         $this->removeAllRolesFromAccount($account);
     }
 
-    public function syncAccountWithRoles($account, $roles) : void
+    /**
+     * Sync the user's roles for a given account (replaces existing roles).
+     *
+     * @param int|string|Model $account The account ID or Model.
+     * @param int|string|Model|array|Collection $roles A single role ID/Model or an array/Collection of them.
+     * @return void
+     */
+    public function syncAccountWithRoles(int|string|Model $account, int|string|Model|array|Collection $roles) : void
     {
         DB::transaction(function () use ($account, $roles) {
             $this->removeAllRolesFromAccount($account);
@@ -78,7 +122,14 @@ trait HasAccounts
         });
     }
 
-    public function hasAccountRole($account, int|string $role) : bool
+    /**
+     * Check if the user has a specific role in a given account.
+     *
+     * @param int|string|Model $account The account ID or Model.
+     * @param int|string $role The role ID, UUID, or Name.
+     * @return bool
+     */
+    public function hasAccountRole(int|string|Model $account, int|string $role) : bool
     {
         $accountId = $this->extractAccountId($account);
         $column = $this->isIdOrUuid($role) ? 'id' : 'name';
@@ -86,7 +137,14 @@ trait HasAccounts
         return $this->accountRoles($accountId)->where($column, $role)->exists();
     }
 
-    public function hasAnyAccountRole($account, array $roles) : bool
+    /**
+     * Check if the user has ANY of the specified roles in a given account.
+     *
+     * @param int|string|Model $account The account ID or Model.
+     * @param array<int, int|string> $roles An array of role IDs, UUIDs, or Names.
+     * @return bool
+     */
+    public function hasAnyAccountRole(int|string|Model $account, array $roles) : bool
     {
         $accountId = $this->extractAccountId($account);
 
@@ -99,7 +157,14 @@ trait HasAccounts
         return false;
     }
 
-    public function hasAllAccountRoles($account, array $roles) : bool
+    /**
+     * Check if the user has ALL of the specified roles in a given account.
+     *
+     * @param int|string|Model $account The account ID or Model.
+     * @param array<int, int|string> $roles An array of role IDs, UUIDs, or Names.
+     * @return bool
+     */
+    public function hasAllAccountRoles(int|string|Model $account, array $roles) : bool
     {
         $accountId = $this->extractAccountId($account);
 
@@ -112,7 +177,14 @@ trait HasAccounts
         return true;
     }
 
-    public function hasAccountPermission($account, int|string $permission) : bool
+    /**
+     * Check if the user has a specific permission in a given account.
+     *
+     * @param int|string|Model $account The account ID or Model.
+     * @param int|string $permission The permission ID, UUID, or Name.
+     * @return bool
+     */
+    public function hasAccountPermission(int|string|Model $account, int|string $permission) : bool
     {
         $accountId = $this->extractAccountId($account);
         $column = $this->isIdOrUuid($permission) ? 'id' : 'name';
@@ -122,7 +194,14 @@ trait HasAccounts
         })->exists();
     }
 
-    public function hasAnyAccountPermission($account, array $permissions) : bool
+    /**
+     * Check if the user has ANY of the specified permissions in a given account.
+     *
+     * @param int|string|Model $account The account ID or Model.
+     * @param array<int, int|string> $permissions An array of permission IDs, UUIDs, or Names.
+     * @return bool
+     */
+    public function hasAnyAccountPermission(int|string|Model $account, array $permissions) : bool
     {
         $accountId = $this->extractAccountId($account);
 
@@ -135,7 +214,14 @@ trait HasAccounts
         return false;
     }
 
-    public function hasAllAccountPermissions($account, array $permissions) : bool
+    /**
+     * Check if the user has ALL of the specified permissions in a given account.
+     *
+     * @param int|string|Model $account The account ID or Model.
+     * @param array<int, int|string> $permissions An array of permission IDs, UUIDs, or Names.
+     * @return bool
+     */
+    public function hasAllAccountPermissions(int|string|Model $account, array $permissions) : bool
     {
         $accountId = $this->extractAccountId($account);
 
@@ -148,7 +234,13 @@ trait HasAccounts
         return true;
     }
 
-    private function extractAccountId($account)
+    /**
+     * Extract the raw account ID from a Model or scalar value.
+     *
+     * @param int|string|Model|null $account The account ID or Model.
+     * @return int|string|null The raw account ID.
+     */
+    private function extractAccountId(int|string|Model|null $account) : int|string|null
     {
         if ($account instanceof Model) {
             $accountPrimaryKey = config('stateless-tenancy.account_primary_key', 'id');
@@ -158,7 +250,13 @@ trait HasAccounts
         return $account;
     }
 
-    private function extractRoleIds($roles) : array
+    /**
+     * Extract an array of raw role IDs from mixed inputs.
+     *
+     * @param int|string|Model|array|Collection $roles The roles input.
+     * @return array<int, int|string> An array of raw role IDs.
+     */
+    private function extractRoleIds(int|string|Model|array|Collection $roles) : array
     {
         if ($roles instanceof Collection) {
             return $roles->map(function ($role) {
@@ -179,7 +277,13 @@ trait HasAccounts
         return [$roles];
     }
 
-    private function isIdOrUuid($value) : bool
+    /**
+     * Determine if a value is an integer ID or a UUID.
+     *
+     * @param int|string $value The value to check.
+     * @return bool True if the value is numeric or a UUID, false if it's a name/slug.
+     */
+    private function isIdOrUuid(int|string $value) : bool
     {
         return is_numeric($value) || Str::isUuid((string) $value);
     }
