@@ -4,6 +4,7 @@ namespace FernandoGuiao\StatelessTenancy\Traits;
 
 use FernandoGuiao\StatelessTenancy\Models\Role;
 use FernandoGuiao\StatelessTenancy\Services\AuthService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Collection;
@@ -53,17 +54,22 @@ trait HasAccounts
     public function getAccountPermissions(int|string|Model $account) : array
     {
         $accountId = $this->extractAccountId($account);
-        $permissions = [];
-        $this->accountRoles($accountId)
-            ->with('permissions')
-            ->get()
-            ->pluck('permissions')
-            ->flatten()
-            ->each(function ($permission) use (&$permissions) {
-                $permissions[$permission->name] = true;
-            });
 
-        return $permissions;
+        $roleIds = $this->accountRoles($accountId)->pluck('roles.id');
+
+        if ($roleIds->isEmpty()) {
+            return [];
+        }
+
+        $permissions = DB::table('permission_role')
+            ->join('permissions', 'permission_role.permission_id', '=', 'permissions.id')
+            ->whereIn('permission_role.role_id', $roleIds)
+            ->pluck('permissions.name')
+            ->unique();
+
+        return $permissions->mapWithKeys(function ($name) {
+            return [$name => true];
+        })->toArray();
     }
 
     /**
@@ -132,7 +138,7 @@ trait HasAccounts
     public function hasAccountRole(int|string|Model $account, int|string $role) : bool
     {
         $accountId = $this->extractAccountId($account);
-        $column = $this->isIdOrUuid($role) ? 'id' : 'name';
+        $column = $this->isIdOrUuid($role) ? 'roles.id' : 'roles.name';
 
         return $this->accountRoles($accountId)->where($column, $role)->exists();
     }
@@ -146,15 +152,22 @@ trait HasAccounts
      */
     public function hasAnyAccountRole(int|string|Model $account, array $roles) : bool
     {
-        $accountId = $this->extractAccountId($account);
-
-        foreach ($roles as $role) {
-            if ($this->hasAccountRole($accountId, $role)) {
-                return true;
-            }
+        if (empty($roles)) {
+            return false;
         }
 
-        return false;
+        $accountId = $this->extractAccountId($account);
+        $grouped = $this->groupRolesOrPermissionsByIdAndName($roles);
+
+        return $this->accountRoles($accountId)
+            ->where(function (Builder $query) use ($grouped) {
+                if (!empty($grouped['ids'])) {
+                    $query->orWhereIn('roles.id', $grouped['ids']);
+                }
+                if (!empty($grouped['names'])) {
+                    $query->orWhereIn('roles.name', $grouped['names']);
+                }
+            })->exists();
     }
 
     /**
@@ -166,15 +179,25 @@ trait HasAccounts
      */
     public function hasAllAccountRoles(int|string|Model $account, array $roles) : bool
     {
-        $accountId = $this->extractAccountId($account);
-
-        foreach ($roles as $role) {
-            if (!$this->hasAccountRole($accountId, $role)) {
-                return false;
-            }
+        if (empty($roles)) {
+            return true;
         }
 
-        return true;
+        $roles = array_unique($roles);
+        $accountId = $this->extractAccountId($account);
+        $grouped = $this->groupRolesOrPermissionsByIdAndName($roles);
+
+        $count = $this->accountRoles($accountId)
+            ->where(function (Builder $query) use ($grouped) {
+                if (!empty($grouped['ids'])) {
+                    $query->orWhereIn('roles.id', $grouped['ids']);
+                }
+                if (!empty($grouped['names'])) {
+                    $query->orWhereIn('roles.name', $grouped['names']);
+                }
+            })->count();
+
+        return $count === count($roles);
     }
 
     /**
@@ -187,9 +210,9 @@ trait HasAccounts
     public function hasAccountPermission(int|string|Model $account, int|string $permission) : bool
     {
         $accountId = $this->extractAccountId($account);
-        $column = $this->isIdOrUuid($permission) ? 'id' : 'name';
+        $column = $this->isIdOrUuid($permission) ? 'permissions.id' : 'permissions.name';
 
-        return $this->accountRoles($accountId)->whereHas('permissions', function ($query) use ($column, $permission) {
+        return $this->accountRoles($accountId)->whereHas('permissions', function (Builder $query) use ($column, $permission) {
             $query->where($column, $permission);
         })->exists();
     }
@@ -203,15 +226,23 @@ trait HasAccounts
      */
     public function hasAnyAccountPermission(int|string|Model $account, array $permissions) : bool
     {
-        $accountId = $this->extractAccountId($account);
-
-        foreach ($permissions as $permission) {
-            if ($this->hasAccountPermission($accountId, $permission)) {
-                return true;
-            }
+        if (empty($permissions)) {
+            return false;
         }
 
-        return false;
+        $accountId = $this->extractAccountId($account);
+        $grouped = $this->groupRolesOrPermissionsByIdAndName($permissions);
+
+        return $this->accountRoles($accountId)->whereHas('permissions', function (Builder $query) use ($grouped) {
+            $query->where(function (Builder $subQuery) use ($grouped) {
+                if (!empty($grouped['ids'])) {
+                    $subQuery->orWhereIn('permissions.id', $grouped['ids']);
+                }
+                if (!empty($grouped['names'])) {
+                    $subQuery->orWhereIn('permissions.name', $grouped['names']);
+                }
+            });
+        })->exists();
     }
 
     /**
@@ -223,15 +254,28 @@ trait HasAccounts
      */
     public function hasAllAccountPermissions(int|string|Model $account, array $permissions) : bool
     {
+        if (empty($permissions)) {
+            return true;
+        }
+
+        $permissions = array_unique($permissions);
         $accountId = $this->extractAccountId($account);
+        $grouped = $this->groupRolesOrPermissionsByIdAndName($permissions);
+
+        $rolesWithPermissions = $this->accountRoles($accountId)->with('permissions')->get();
+        $userPermissions = $rolesWithPermissions->pluck('permissions')->flatten();
+
+        $matchedCount = 0;
 
         foreach ($permissions as $permission) {
-            if (!$this->hasAccountPermission($accountId, $permission)) {
-                return false;
+            $column = in_array($permission, $grouped['ids']) ? 'id' : 'name';
+
+            if ($userPermissions->contains($column, $permission)) {
+                $matchedCount++;
             }
         }
 
-        return true;
+        return $matchedCount === count($permissions);
     }
 
     /**
@@ -286,5 +330,26 @@ trait HasAccounts
     private function isIdOrUuid(int|string $value) : bool
     {
         return is_numeric($value) || Str::isUuid((string) $value);
+    }
+
+    /**
+     * Group an array of roles or permissions into 'ids' and 'names'.
+     *
+     * @param array<int, int|string> $items An array of items to group.
+     * @return array{ids: array<int, int|string>, names: array<int, string>}
+     */
+    private function groupRolesOrPermissionsByIdAndName(array $items) : array
+    {
+        $grouped = ['ids' => [], 'names' => []];
+
+        foreach ($items as $item) {
+            if ($this->isIdOrUuid($item)) {
+                $grouped['ids'][] = $item;
+            } else {
+                $grouped['names'][] = $item;
+            }
+        }
+
+        return $grouped;
     }
 }
