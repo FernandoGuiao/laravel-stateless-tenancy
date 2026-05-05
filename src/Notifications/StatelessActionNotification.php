@@ -16,9 +16,6 @@ class StatelessActionNotification extends Notification
 {
     use Queueable;
 
-    /**
-     * @var string
-     */
     protected string $subjectText;
 
     /**
@@ -26,14 +23,8 @@ class StatelessActionNotification extends Notification
      */
     protected array $messageLines;
 
-    /**
-     * @var string
-     */
     protected string $buttonText;
 
-    /**
-     * @var string
-     */
     protected string $actionUrl;
 
     /**
