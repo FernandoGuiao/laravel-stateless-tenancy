@@ -31,6 +31,11 @@ trait BelongsToAccount
         });
     }
 
+    public function scopeAllAccounts(Builder $query)
+    {
+        return $query->withoutGlobalScope('account');
+    }
+
     public function account()
     {
         return $this->belongsTo(
