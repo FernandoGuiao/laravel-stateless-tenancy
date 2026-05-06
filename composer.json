@@ -15,8 +15,7 @@
     "license": "MIT",
     "authors": [
         {
-            "name": "Fernando Guiao",
-            "email": "contato@fernandoguiao.com"
+            "name": "Fernando Guiao"
         }
     ],
     "autoload": {
